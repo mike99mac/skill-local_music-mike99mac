@@ -30,157 +30,169 @@ from threading import Thread, Event
 from typing import List, Optional
 from os.path import join, dirname, expanduser, isdir
 from random import sample
-
 from ovos_plugin_common_play import MediaType, PlaybackType
-from ovos_workshop.skills.common_play import OVOSCommonPlaybackSkill, \
-    ocp_search
+from ovos_workshop.skills.common_play import OVOSCommonPlaybackSkill, ocp_search, ocp_play
 from ovos_utils import classproperty
 from ovos_utils.log import LOG
 from ovos_utils.process_utils import RuntimeRequirements
 from ovos_utils.xdg_utils import xdg_cache_home
-
-from skill_local_music.util import MusicLibrary, Track
-
+import os
+import sys
+sys.path.append(os.path.abspath("/home/neon/.local/share/neon/skills/skill-local_music-mike99mac"))
+from mpc_client import MpcClient
+from music_info import Music_info
+from util import MusicLibrary, Track
 
 class LocalMusicSkill(OVOSCommonPlaybackSkill):
-    def __init__(self, **kwargs):
-        self.supported_media = [MediaType.MUSIC,
-                                MediaType.AUDIO,
-                                MediaType.GENERIC]
-        self.library_update_event = Event()
-        self._music_library = None
-        self._image_url = join(dirname(__file__), 'ui/music-solid.svg')
-        self._demo_dir = join(expanduser(xdg_cache_home()), "neon",
-                              "demo_music")
-        OVOSCommonPlaybackSkill.__init__(self, **kwargs)
+  def __init__(self, **kwargs):
+    self.supported_media = [MediaType.MUSIC,
+                            MediaType.AUDIO,
+                            MediaType.GENERIC]
+    self.library_update_event = Event()
+    self.mpc_client = MpcClient("file:///mnt/usb/music/") # search for music under /mnt/usb/music
+    self._music_library = None
+    # self.music_dir = "/mnt/usb"   
+    self.music_info = Music_info("none", "", {}, []) # music to play
+    self._image_url = join(dirname(__file__), 'ui/music-solid.svg')
+    self._demo_dir = join(expanduser(xdg_cache_home()), "neon", "demo_music")
+    OVOSCommonPlaybackSkill.__init__(self, **kwargs)
 
-    @classproperty
-    def runtime_requirements(self):
-        return RuntimeRequirements(network_before_load=False,
-                                   internet_before_load=False,
-                                   gui_before_load=False,
-                                   requires_internet=False,
-                                   requires_network=False,
-                                   requires_gui=False,
-                                   no_internet_fallback=True,
-                                   no_network_fallback=True,
-                                   no_gui_fallback=True)
+  @classproperty
+  def runtime_requirements(self):
+    return RuntimeRequirements(network_before_load=False,
+                             internet_before_load=False,
+                             gui_before_load=False,
+                             requires_internet=False,
+                             requires_network=False,
+                             requires_gui=False,
+                             no_internet_fallback=True,
+                             no_network_fallback=True,
+                             no_gui_fallback=True)
 
-    @property
-    def demo_url(self) -> Optional[str]:
-        # default_url = "https://2222.us/app/files/neon_music/music.zip"
-        return self.settings.get("demo_url")
+  @property
+  def demo_url(self) -> Optional[str]:
+    # default_url = "https://2222.us/app/files/neon_music/music.zip"
+    return self.settings.get("demo_url")
 
-    @property
-    def music_dir(self) -> str:
-        # default_path = "/media"
-        return expanduser(self.settings.get('music_dir', ""))
+  @property
+  def music_dir(self) -> str:
+    # default_path = "/media"
+    # return expanduser(self.settings.get('music_dir', ""))
+    return self.music_dir
 
-    @property
-    def music_library(self):
-        if not self._music_library:
-            LOG.info(f"Initializing music library at: {self.music_dir}")
-            self._music_library = MusicLibrary(self.music_dir,
-                                               self.file_system.path)
-        return self._music_library
+  @property
+  def music_library(self):
+    if not self._music_library:
+      LOG.info(f"LocalMusicSkill:music_library() Initializing music library at: {self.music_dir}")
+      self._music_library = MusicLibrary(self.music_dir, self.file_system.path)
+    return self._music_library
 
     # TODO: Move to __init__ after ovos-workshop stable release
-    def initialize(self):
-        # TODO: add intent to update library?
-        Thread(target=self.update_library, daemon=True).start()
+  def initialize(self):
+      # TODO: add intent to update library?
+      # Thread(target=self.update_library, daemon=True).start()
+      pass
 
-    def update_library(self):
-        self.library_update_event.clear()
-        if self.music_dir and isdir(self.music_dir):
-            LOG.debug(f"Load configured directory: {self.music_dir}")
-            self.music_library.update_library(self.music_dir)
-        user_dir = expanduser("~/Music")
-        if isdir(user_dir):
-            LOG.debug(f"Load default directory: {self.music_dir}")
-            self.music_library.update_library(user_dir)
-        if self.demo_url and not isdir(self._demo_dir):
-            LOG.info(f"Downloading Demo Music from: {self.demo_url}")
-            self._download_demo_tracks()
-        elif isdir(self._demo_dir):
-            self.music_library.update_library(self._demo_dir)
-        self.library_update_event.set()
+  def update_library(self):
+    LOG.info(f"LocalMusicSkill:update_library() - can mpd auto-update?")
+    self.mpc_client.mpc_update()
 
-    @ocp_search()
-    def search_music(self, phrase, media_type=MediaType.GENERIC):
-        if not self.library_update_event.wait(5):
-            LOG.warning("Library update in progress; results may be limited")
-        results = self.search_artist(phrase, media_type) + \
-            self.search_album(phrase, media_type) + \
-            self.search_genre(phrase, media_type) + \
-            self.search_track(phrase, media_type)
-        if not results and self.voc_match(phrase, 'local.voc'):
-            score = 60
-            if media_type == MediaType.MUSIC:
-                score += 20
-            else:
-                LOG.debug("No media type requested")
-            all_songs = self.music_library.all_songs
-            if len(all_songs) > 50:
-                all_songs = sample(self.music_library.all_songs, 50)
-            results = self._tracks_to_search_results(all_songs, score)
-            LOG.debug(f"Returning all songs with score={score}")
-        LOG.info(f"Returning {len(results)} results")  # conf 65
-        return results
+  def tracks_to_search_results(self, tracks: List[Track], score: int):
+    LOG.info(f"LocalMusicSkill.tracks_to_search_results() match_type = {self.music_info.match_type} score = {score}")
+    tracks = [{'media_type': MediaType.MUSIC,
+               'playback': PlaybackType.AUDIO,
+               'image': track.artwork if track.artwork else None,
+               'skill_icon': self._image_url,
+               'uri': track.path,
+               'title': track.title,
+               'artist': track.artist,
+               'length': track.duration_ms,
+               'match_confidence': 100} for track in tracks]
+    return tracks   
 
-    def search_artist(self, phrase, media_type=MediaType.GENERIC) -> List[dict]:
-        score = 65
-        if media_type == MediaType.MUSIC:
-            score += 20
-        if self.voc_match(phrase, 'local.voc'):
-            score += 20
-        tracks = self.music_library.search_songs_for_artist(phrase)
-        LOG.debug(f"Found {len(tracks)} artist results")
-        return self._tracks_to_search_results(tracks, score)
+  @ocp_search()
+  def search_music(self, sentence, media_type=MediaType.GENERIC):
+    LOG.info(f"LocalMusicSkill:search_music(): sentence = {sentence}")
+    sentence = sentence.lower()            # fold to lower case
 
-    def search_album(self, phrase, media_type=MediaType.GENERIC) -> List[dict]:
-        score = 70
-        if media_type == MediaType.MUSIC:
-            score += 20
-        if self.voc_match(phrase, 'local.voc'):
-            score += 20
-        tracks = self.music_library.search_songs_for_album(phrase)
-        LOG.debug(f"Found {len(tracks)} album results")
-        return self._tracks_to_search_results(tracks, score)
+    # if first word is a playlist verb then manipulate playlists  
+    first_word = sentence.split(' ', 1)[0]
+    match first_word:
+      case 'create'|'make'|'add'|'at'|'delete'|"i'd"|'remove'|'list'|'what': # 'add' is sometimes 'at' or I'd
+        self.music_info = self.mpc_client.manipulate_playlists(sentence)
+        return {'confidence':100, 'correlator':0, 'sentence':sentence, 'url':self.url} # all done
 
-    def search_genre(self, phrase, media_type=MediaType.GENERIC) -> List[dict]:
-        score = 50
-        if media_type == MediaType.MUSIC:
-            score += 20
-        if self.voc_match(phrase, 'local.voc'):
-            score += 20
-        tracks = self.music_library.search_songs_for_genre(phrase)
-        LOG.debug(f"Found {len(tracks)} genre results")
-        return self._tracks_to_search_results(tracks, score)
+    # if track or album is specified, assume it is a song, else search for 'radio', 'internet' or 'news' requests
+    song_words = ["track", "song", "title", "album", "record", "artist", "band" ]
+    if "internet radio" in sentence:
+      request_type = "radio"
+    elif "internet" in sentence:
+      request_type = "internet"
+    elif any([x in sentence for x in song_words]):
+      request_type = "music"
+    elif "radio" in sentence:
+      request_type = "radio"
+    elif "n p r" in sentence or "news" in sentence:
+      request_type = "news"
+    elif "playlist" in sentence:
+      request_type = "playlist"
+    else:
+      request_type = "music"
 
-    def search_track(self, phrase, media_type=MediaType.GENERIC) -> List[dict]:
-        score = 75
-        if media_type == MediaType.MUSIC:
-            score += 20
-        if self.voc_match(phrase, 'local.voc'):
-            score += 20
-        tracks = self.music_library.search_songs_for_track(phrase)
-        LOG.debug(f"Found {len(tracks)} track results")
-        return self._tracks_to_search_results(tracks, score)
+    # search for music in (1) library, on (2) Internet radio, on (3) the Internet, (4) in a playlist or (5) play NPR news
+    LOG.info(f"LocalMusicSkill:search_music(): request_type = {request_type}")
+    match request_type:
+      case "music":                        # if not found in library, search internet
+        self.music_info = self.mpc_client.search_library(sentence)
+        LOG.info(f"LocalMusicSkill:search_music() match_type = {self.music_info.match_type}")
+        if self.music_info.match_type == "none": # music not found in library
+          self.sentence = sentence
+          LOG.info(f"LocalMusicSkill:search_music(): not found in library - searching Internet")
+          self.music_info.mesg_file = "searching_internet"
+          self.music_info.mesg_info = {"sentence": sentence}
+          self.speak_lang(self.skill_base_dir, self.music_info.mesg_file, self.music_info.mesg_info)
+          self.music_info = self.mpc_client.search_internet(self.sentence) # search Internet as fallback
+      case "radio":
+        self.music_info = self.mpc_client.parse_radio(sentence)
+      case "internet":
+        self.music_info = self.mpc_client.search_internet(sentence)
+      case "playlist":
+        self.music_info = self.mpc_client.get_playlist(sentence)
+      case "news":
+        self.music_info = self.mpc_client.search_news(sentence)
+    if self.music_info.tracks != None:     # found music
+      LOG.info("LocalMusicSkill:search_music(): found tracks or URLs - calling tracks_to_search_results()")
+      tracks = self.tracks_to_search_results(self.music_info.tracks, 100)
+      return tracks
+    else:                                  # found no music or error
+      LOG.info(f"LocalMusicSkill:search_music() did not find music: mesg_file = {self.music_info.mesg_file} mesg_info = {self.music_info.mesg_info}")
+      return None
+  
+  @ocp_play()
+  def media_play(self, msg):
+    """
+    Either music has been found, a playlist operation finished, or an error message has to be spoken
+    """
+    LOG.info(f"LocalMusicSkill.media_play() match_type = {self.music_info.match_type}")
+    if self.music_info.match_type == "none": # no music was found
+      self.log.debug("MpcSkill.media_play() no music found")
+      self.speak_lang(self.skill_base_dir, self.music_info.mesg_file, self.music_info.mesg_info)
+      return None
+    elif self.music_info.match_type == "playlist_op": # playlist operation - no music, just speak message
+      self.log.debug("MpcSkill.media_play() speak results of playlist request")
+      self.speak_lang(self.skill_base_dir, self.music_info.mesg_file, self.music_info.mesg_info)
+      return None
+    elif self.music_info.match_type != "playlist": # playlists are already queued up
+      self.mpc_client.mpc_cmd("clear")     # stop any media that might be playing
+      for next_url in self.music_info.tracks_or_urls:
+        self.log.debug(f"MpcSkill.media_play() adding URL to MPC queue: {next_url}")
+        cmd = f"add {next_url}"
+        self.mpc_client.mpc_cmd(cmd)
+    elif self.music_info.match_type == "playlist":
+      self.mpc_client.mpc_cmd("random on") # shuffle tracks
+    if self.music_info.mesg_file == None:  # no message
+      self.start_music()
+    else:                                  # speak message and pass callback
+      self.speak_lang(self.skill_base_dir, self.music_info.mesg_file, self.music_info.mesg_info, self.start_music)
 
-    def _tracks_to_search_results(self, tracks: List[Track], score: int = 20):
-        # TODO: Lower confidence if path is in demo dir
-        tracks = [{'media_type': MediaType.MUSIC,
-                   'playback': PlaybackType.AUDIO,
-                   'image': track.artwork if track.artwork else None,
-                   'skill_icon': self._image_url,
-                   'uri': track.path,
-                   'title': track.title,
-                   'artist': track.artist,
-                   'length': track.duration_ms,
-                   'match_confidence': score} for track in tracks]
-        return tracks
-
-    def _download_demo_tracks(self):
-        from ovos_skill_installer import download_extract_zip
-        download_extract_zip(self.demo_url, self._demo_dir)
-        self.music_library.update_library(self._demo_dir)
+  
