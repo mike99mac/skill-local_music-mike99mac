@@ -17,7 +17,6 @@ $ uname -v
 #1 SMP PREEMPT Debian 1:6.6.28-1+rpt1 (2024-04-22)
 ```
 
-[automount]
 ### Set up automount of USB drives
 OVOS does not appear to have automount of USB drives set up.  When you plug a USB drive in, a device file, usually ``/dev/sda1`` is created, but it is not mounted.  It is recommended that you **do not** use the directory ``/media``.  Rather, create a new directory under ``/mnt``.
 
