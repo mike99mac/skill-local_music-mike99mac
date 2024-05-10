@@ -17,6 +17,7 @@ $ uname -v
 #1 SMP PREEMPT Debian 1:6.6.28-1+rpt1 (2024-04-22)
 ```
 
+[automount]
 ### Set up automount of USB drives
 OVOS does not appear to have automount of USB drives set up.  When you plug a USB drive in, a device file, usually ``/dev/sda1`` is created, but it is not mounted.  It is recommended that you **do not** use the directory ``/media``.  Rather, create a new directory under ``/mnt``.
 
@@ -87,6 +88,9 @@ sudo mkdir usb
 sudo mount /dev/sda1 /mnt/usb
 ```
 
+### Add some tools
+The ovos-tools repo has some useful tools.
+ 
 - Install ovos-tools:
 
 ```
@@ -95,8 +99,13 @@ cd ovos-tools
 sudo ./setup
 ```
 
+### Install OVOS
+The OVOS installer makes it easy to install OVOS, which is not a small task.
+ 
 - Install OVOS with the OVOS installer. Follow the steps in this document:
 https://community.openconversational.ai/t/howto-begin-your-open-voice-os-journey-with-the-ovos-installer/14900
+
+- For reference, this is the command that starts the process:
 
 ```
 sh -c "curl -s https://raw.githubusercontent.com/OpenVoiceOS/ovos-installer/main/installer.sh -o installer.sh && chmod +x installer.sh && sudo ./installer.sh && rm installer.sh"
@@ -110,11 +119,13 @@ git clone https://github.com/mike99mac/skill-local_music-mike99mac
 ```
 
 - Change to the OVOS source code directory 
+
+```
 cd ~/.venvs/ovos/lib/python3.11/site-packages/skill-local_music-mike99mac
 cp -a $HOME/skill-local_music-mike99mac/ .
+```
 
-
-Install the branch that restores support for Mycroft CommonPlay skills 
+- Install the branch that restores support for Mycroft CommonPlay skills:
 
 ```
 pip install git+https://github.com/OpenVoiceOS/ovos-core@feat/ocp_legacy
