@@ -66,16 +66,21 @@ case "${ACTION}" in
 esac
 ```
 
+- Make it executable:
+
+```
+sudo chmod 755 /root/usb-mount.sh
+```
+
 - Restart udev rules:
 
 ```
-sudo udevadm control --reload-rules && udevadm trigger
+sudo udevadm control --reload-rules
 ```
 
-To install this music skill, perform the following steps:
-- Plug a USB drive with music files into one of the USB ports
+- Plug a USB drive in. It should get mounted over ``/mnt/usb``.
 
-- Make the directory ``/mnt/usb`` 
+
 ```
 cd /mnt
 sudo mkdir usb
@@ -117,7 +122,7 @@ pip install git+https://github.com/OpenVoiceOS/ovos-core@feat/ocp_legacy
 
 - Add this to the end your mycroft.conf file:
 
-vi ~/.config/mycroft/mycroft.conf
+```
 {
   "intents": {
     "legacy_cps": true,
