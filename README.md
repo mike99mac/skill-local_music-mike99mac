@@ -9,11 +9,67 @@ Search and play music saved to the local file system.
 ## Installation
 This example was installed on a Raspberry Pi 5 running Raspberry Pi OS.
 
+
 ```
 $ head -1 /etc/os-release
 PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
 $ uname -v
 #1 SMP PREEMPT Debian 1:6.6.28-1+rpt1 (2024-04-22)
+```
+
+### Set up automount of USB drives
+OVOS does not appear to have automount of USB drives set up.  When you plug a USB drive in, a device file, usually ``/dev/sda1`` is created, but it is not mounted.  It is recommended that you **do not** use the directory ``/media``.  Rather, create a new directory under ``/mnt``.
+
+To set up automount, perform the following steps:
+
+- Create the udev rules file ``/etc/udev/rules.d/99-mount-usb.rules`` as follows:
+
+```
+cd /etc/udev/rules.d
+vi 99-mount-usb.rules
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/bin/systemctl start usb-mount@%k.service"
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="remove", RUN+="/bin/systemctl stop usb-mount@%k.service"
+```
+
+- Create the systemd file ``/etc/systemd/system/usb-mount@.service`` with the following content
+
+```
+[Unit]
+Description=Mount USB Drive on %i
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/root/usb-mount.sh add %i
+ExecStop=/root/usb-mount.sh remove %i
+```
+
+- Create the script ``/root/usb-mount.sh``:
+
+```
+#!/bin/bash
+ACTION=$1
+DEVBASE=$2
+DEVICE="/dev/${DEVBASE}"
+MOUNT_POINT=$(/bin/mount | /bin/grep ${DEVICE} | /usr/bin/awk '{ print $3 }')  # See if this drive is already mounted
+case "${ACTION}" in
+    add)
+        if [[ -n ${MOUNT_POINT} ]]; then exit 1; fi          # Already mounted, exit
+        eval $(/sbin/blkid -o udev ${DEVICE})                # Get info for this drive: $ID_FS_LABEL, $ID_FS_UUID, and $ID_FS_TYPE
+        OPTS="rw,relatime"                                   # Global mount options
+        if [[ ${ID_FS_TYPE} == "vfat" ]]; then OPTS+=",users,gid=100,umask=000,shortname=mixed,utf8=1,flush"; fi     # File system type specific mount options
+        if ! /bin/mount -o ${OPTS} ${DEVICE} /mnt/usb/; then exit 1; fi          # Error during mount process: cleanup mountpoint
+        ;;
+    remove)
+        if [[ -n ${MOUNT_POINT} ]]; then /bin/umount -l ${DEVICE}; fi
+        ;;
+esac
+```
+
+- Restart udev rules:
+
+```
+sudo udevadm control --reload-rules && udevadm trigger
 ```
 
 To install this music skill, perform the following steps:
