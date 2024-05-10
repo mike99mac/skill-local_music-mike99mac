@@ -4,22 +4,7 @@
 local storage.
 
 ## Description
-Search and play music saved to the local file system. By default, the contents of
-`/media` will be used, but this can be changed in skill settings. Tagged audio files
-will have image art and track info parsed from metadata, but you may also organize
-files in the following format to parse untagged files (i.e. `.wav` files).
-```
-Artist 1
-|
-|- Album
-|  |
-|  |- 01 Song Title.wav
-|  |- Folder.jpg
-Artist 2
-|
-|- Album 2
-...
-```
+Search and play music saved to the local file system. 
 
 ## Installation
 This example was installed on a Raspberry Pi 5 running Raspberry Pi OS.
@@ -32,6 +17,15 @@ $ uname -v
 ```
 
 To install this music skill, perform the following steps:
+- Plug a USB drive with music files into one of the USB ports
+
+- Make the directory ``/mnt/usb`` 
+```
+cd /mnt
+sudo mkdir usb
+sudo mount /dev/sda1 /mnt/usb
+```
+
 - Install ovos-tools:
 
 ```
@@ -40,9 +34,12 @@ cd ovos-tools
 sudo ./setup
 ```
 
-- Install OVOS with the OVOS installer
+- Install OVOS with the OVOS installer. Follow the steps in this document:
+https://community.openconversational.ai/t/howto-begin-your-open-voice-os-journey-with-the-ovos-installer/14900
 
-  https://community.openconversational.ai/t/howto-begin-your-open-voice-os-journey-with-the-ovos-installer/14900
+```
+sh -c "curl -s https://raw.githubusercontent.com/OpenVoiceOS/ovos-installer/main/installer.sh -o installer.sh && chmod +x installer.sh && sudo ./installer.sh && rm installer.sh"
+```
 
 - Clone this repo to your home directory: 
 
@@ -55,13 +52,6 @@ git clone https://github.com/mike99mac/skill-local_music-mike99mac
 cd ~/.venvs/ovos/lib/python3.11/site-packages/skill-local_music-mike99mac
 cp -a $HOME/skill-local_music-mike99mac/ .
 
-- Plug a USB drive with music files into one of the USB ports
-
-- Make the directory ``/mnt/usb`` 
-```
-cd /mnt
-(ovos) pi@model2000:/mnt$ sudo mkdir usb
-(ovos) pi@model2000:/mnt$ sudo mount /dev/sda1 /mnt/usb
 
 Install the branch that restores support for Mycroft CommonPlay skills 
 
